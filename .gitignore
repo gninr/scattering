@@ -1,2 +1,5 @@
 *.msh
+*.pvd
+*.vtu
 __pycache__/
+.ipynb_checkpoints/

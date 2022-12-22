@@ -59,7 +59,7 @@ Curve Loop(9)  = {18:21};
 Curve Loop(10) = {22:25};
 Physical Curve("Gamma", 1) = {1};
 Physical Curve("Gamma_I", 2) = {2:5};
-Physical Curve("Gamma_D", 3) = {6:9};
+Physical Curve("Gamma_D", 3) = {6:9, 11, 12, 15, 16, 19, 20, 23, 24};
 
 Plane Surface(1) = {1, 2};
 Plane Surface(2) = {3};
@@ -77,3 +77,5 @@ Transfinite Surface{5} = {4, 15, 16, 1};
 Recombine Surface{2:9};
 Physical Surface("Omega_F", 1) = {1};
 Physical Surface("Omega_A", 2) = {2:9};
+
+Mesh.Algorithm = 5;
