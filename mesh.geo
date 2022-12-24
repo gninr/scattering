@@ -43,10 +43,6 @@ Line(23) = {16,  5};
 Line(24) = { 5,  6};
 Line(25) = { 6,  1};
 
-Transfinite Curve{1} = 32;
-Transfinite Curve{2:9} = 17;
-Transfinite Curve{10:25} = 3;
-
 Curve Loop(1)  = {1};
 Curve Loop(2)  = {2:5};
 Curve Loop(3)  = {6, -10, -2, -25};
@@ -70,12 +66,7 @@ Plane Surface(6) = {7};
 Plane Surface(7) = {8};
 Plane Surface(8) = {9};
 Plane Surface(9) = {10};
-Transfinite Surface{2} = {1, 6, 7, 2};
-Transfinite Surface{3} = {2, 9, 10, 3};
-Transfinite Surface{4} = {3, 12, 13, 4};
-Transfinite Surface{5} = {4, 15, 16, 1};
-Recombine Surface{2:9};
 Physical Surface("Omega_F", 1) = {1};
-Physical Surface("Omega_A", 2) = {2:9};
-
-Mesh.Algorithm = 5;
+Physical Surface("Omega_A_x", 2) = {2, 4};
+Physical Surface("Omega_A_y", 3) = {3, 5};
+Physical Surface("Omega_A_xy", 4) = {6:9};
