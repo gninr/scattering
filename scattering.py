@@ -108,8 +108,8 @@ def far_field(k, u, theta):
     x = fd.Constant((np.cos(theta), np.sin(theta)))
     phi = fd.pi / 4 - k * fd.inner(x, y)
     f = (fd.cos(phi), fd.sin(phi))
-    g = (fd.inner(k * u[1] * x - fd.grad(u[0]), n),
-         fd.inner(-k * u[0] * x - fd.grad(u[1]), n))
+    g = (fd.inner(k * u[1] * x - fd.grad(u[0]), -n),
+         fd.inner(-k * u[0] * x - fd.grad(u[1]), -n))
     h = prod2(f, g, split=True)
     res_re = 1 / np.sqrt(8*np.pi*k) * fd.assemble(h[0] * fd.ds(1))
     res_im = 1 / np.sqrt(8*np.pi*k) * fd.assemble(h[1] * fd.ds(1))
