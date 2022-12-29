@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-def solve(mesh, k, a1, b1, g_fct, neumann=False, quad_deg=None, beta=None):
+def solve(mesh, k, a0, a1, b0, b1, g, neumann=False, quad_deg=None, beta=None):
     # Function space
     W = fd.VectorFunctionSpace(mesh, "CG", 1)
     if neumann:
@@ -11,28 +11,25 @@ def solve(mesh, k, a1, b1, g_fct, neumann=False, quad_deg=None, beta=None):
     else:
         p = fd.Function(W)
     q = fd.TestFunction(W)
-    g = fd.Function(W)
 
     # Coefficient functions
     X = fd.SpatialCoordinate(mesh)
+    tol = 1e-10
     if beta is None:
         beta = 1
-    sigma_x = beta / k / (a1 - abs(X[0]))
-    sigma_y = beta / k / (b1 - abs(X[1]))
-    c1x = (1 / (1 + sigma_x**2), -sigma_x / (1 + sigma_x**2))
-    c2x = (1, sigma_x)
-    c3x = (1, sigma_x)
-    c1y = (1, sigma_y)
-    c2y = (1 / (1 + sigma_y**2), -sigma_y / (1 + sigma_y**2))
-    c3y = (1, sigma_y)
-    c1xy = ((1 + sigma_x * sigma_y) / (1 + sigma_x**2),
-            (sigma_y - sigma_x) / (1 + sigma_x**2))
-    c2xy = ((1 + sigma_x * sigma_y) / (1 + sigma_y**2),
-            (sigma_x - sigma_y) / (1 + sigma_y**2))
-    c3xy = (1 - sigma_x * sigma_y, sigma_x + sigma_y)
+    sigma_x = fd.conditional(abs(X[0]) > a0 - tol,
+                             beta / k / (a1 - abs(X[0])),
+                             0)
+    sigma_y = fd.conditional(abs(X[1]) > b0 - tol,
+                             beta / k / (b1 - abs(X[1])),
+                             0)
+    c1 = ((1 + sigma_x * sigma_y) / (1 + sigma_x**2),
+          (sigma_y - sigma_x) / (1 + sigma_x**2))
+    c2 = ((1 + sigma_x * sigma_y) / (1 + sigma_y**2),
+          (sigma_x - sigma_y) / (1 + sigma_y**2))
+    c3 = (1 - sigma_x * sigma_y, sigma_x + sigma_y)
 
     # Boundary data
-    g = interpolate(W, g_fct)
     if neumann:
         bcs = [fd.DirichletBC(W, (0., 0), 3)]
     else:
@@ -43,12 +40,8 @@ def solve(mesh, k, a1, b1, g_fct, neumann=False, quad_deg=None, beta=None):
     px, py = p.dx(0), p.dx(1)
     qx, qy = q.dx(0), q.dx(1)
     a = (prod2(px, qx) + prod2(py, qy) - k**2 * prod2(p, q)) * fd.dx(1) \
-        + (prod3(c1x, px, qx) + prod3(c2x, py, qy)
-            - k**2 * prod3(c3x, p, q)) * fd.dx(2) \
-        + (prod3(c1y, px, qx) + prod3(c2y, py, qy)
-            - k**2 * prod3(c3y, p, q)) * fd.dx(3) \
-        + (prod3(c1xy, px, qx) + prod3(c2xy, py, qy)
-            - k**2 * prod3(c3xy, p, q)) * fd.dx(4)
+        + (prod3(c1, px, qx) + prod3(c2, py, qy)
+            - k**2 * prod3(c3, p, q)) * fd.dx(2)
 
     # Linear form
     if neumann:
@@ -63,16 +56,6 @@ def solve(mesh, k, a1, b1, g_fct, neumann=False, quad_deg=None, beta=None):
         fcp["quadrature_degree"] = quad_deg
     fd.solve(a == L, p, bcs=bcs, form_compiler_parameters=fcp)
     return p
-
-
-def interpolate(W, v_fct):
-    v = fd.Function(W)
-    mesh = W.mesh()
-    X = fd.interpolate(mesh.coordinates, W).dat.data_ro
-    v_data = v_fct(X)
-    v.sub(0).dat.data[:] = v_data.real
-    v.sub(1).dat.data[:] = v_data.imag
-    return v
 
 
 def prod2(x, y, split=False):
