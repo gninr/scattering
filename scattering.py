@@ -3,18 +3,22 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-def solve(mesh, k, a1, b1, g_fct, neumann=False):
+def solve(mesh, k, a1, b1, g_fct, neumann=False, quad_deg=None, beta=None):
     # Function space
     W = fd.VectorFunctionSpace(mesh, "CG", 1)
-    p = fd.TrialFunction(W)
+    if neumann:
+        p = fd.TrialFunction(W)
+    else:
+        p = fd.Function(W)
     q = fd.TestFunction(W)
-    s = fd.Function(W)
     g = fd.Function(W)
 
     # Coefficient functions
     X = fd.SpatialCoordinate(mesh)
-    sigma_x = 1 / k / (a1 - abs(X[0]))
-    sigma_y = 1 / k / (b1 - abs(X[1]))
+    if beta is None:
+        beta = 1
+    sigma_x = beta / k / (a1 - abs(X[0]))
+    sigma_y = beta / k / (b1 - abs(X[1]))
     c1x = (1 / (1 + sigma_x**2), -sigma_x / (1 + sigma_x**2))
     c2x = (1, sigma_x)
     c3x = (1, sigma_x)
@@ -49,12 +53,16 @@ def solve(mesh, k, a1, b1, g_fct, neumann=False):
     # Linear form
     if neumann:
         L = (prod2(g, q)) * fd.ds(1)
+        p = fd.Function(W)
     else:
-        L = fd.Constant(0) * q[0] * fd.dx
+        L = 0
 
     # Solution
-    fd.solve(a == L, s, bcs=bcs)
-    return s
+    fcp = {}
+    if quad_deg is not None:
+        fcp["quadrature_degree"] = quad_deg
+    fd.solve(a == L, p, bcs=bcs, form_compiler_parameters=fcp)
+    return p
 
 
 def interpolate(W, v_fct):
@@ -79,9 +87,9 @@ def prod2(x, y, split=False):
 
 
 def prod3(x, y, z, split=False):
-    x_re, x_im = x[0], x[1]
-    y_re, y_im = y[0], y[1]
-    z_re, z_im = z[0], z[1]
+    x_re, x_im = x
+    y_re, y_im = y
+    z_re, z_im = z
     res_re = x_re * y_re * z_re - x_re * y_im * z_im - x_im * y_re * z_im \
         - x_im * y_im * z_re
     res_im = x_re * y_re * z_im + x_re * y_im * z_re + x_im * y_re * z_re \
@@ -92,15 +100,32 @@ def prod3(x, y, z, split=False):
         return res_re + res_im
 
 
-def compute_error(u, uh, relative=True):
-    v = u - uh
-    err = fd.assemble(fd.inner(v, v) * fd.dx(1))**0.5
+def compute_error(u, uh, relative=True, norm="l2",
+                  quad_rule=None, quad_deg=None):
+    fcp = {}
+    if quad_rule is not None:
+        fcp["quadrature_rule"] = quad_rule
+    if quad_deg is not None:
+        fcp["quadrature_degree"] = quad_deg
+    if norm == "l2":
+        def form(h): return fd.inner(h, h)
+    elif norm == "h1_semi":
+        def form(h):
+            return fd.inner(h.dx(0), h.dx(0)) + fd.inner(h.dx(1), h.dx(1))
+    elif norm == "h1":
+        def form(h):
+            return fd.inner(h, h) \
+                + fd.inner(h.dx(0), h.dx(0)) + fd.inner(h.dx(1), h.dx(1))
+
+    err = fd.assemble(form(u - uh) * fd.dx(1),
+                      form_compiler_parameters=fcp)**0.5
     if relative:
-        err /= fd.assemble(fd.inner(u, u) * fd.dx(1))**0.5
+        err /= fd.assemble(form(u) * fd.dx(1),
+                           form_compiler_parameters=fcp)**0.5
     return err
 
 
-def far_field(k, u, theta):
+def far_field(k, u, theta, inc=None):
     mesh = u.function_space().mesh()
     n = fd.FacetNormal(mesh)
     y = fd.SpatialCoordinate(mesh)
@@ -108,8 +133,12 @@ def far_field(k, u, theta):
     x = fd.Constant((np.cos(theta), np.sin(theta)))
     phi = fd.pi / 4 - k * fd.inner(x, y)
     f = (fd.cos(phi), fd.sin(phi))
-    g = (fd.inner(k * u[1] * x - fd.grad(u[0]), -n),
-         fd.inner(-k * u[0] * x - fd.grad(u[1]), -n))
+    if inc is None:
+        g = (fd.inner(k * u[1] * x - fd.grad(u[0]), -n),
+             fd.inner(-k * u[0] * x - fd.grad(u[1]), -n))
+    else:
+        g = (fd.inner(k * (u[1] + inc[1]) * x - fd.grad(u[0] + inc[0]), -n),
+             fd.inner(-k * (u[0] + inc[0]) * x - fd.grad(u[1] + inc[1]), -n))
     h = prod2(f, g, split=True)
     res_re = 1 / np.sqrt(8*np.pi*k) * fd.assemble(h[0] * fd.ds(1))
     res_im = 1 / np.sqrt(8*np.pi*k) * fd.assemble(h[1] * fd.ds(1))
@@ -146,11 +175,11 @@ def plot_field(u, a0, a1, b0, b1):
     fig.colorbar(plot2, shrink=0.5, ax=ax2)
 
 
-def plot_far_field(k, u):
+def plot_far_field(k, u, inc=None):
     theta = np.linspace(0, 2 * np.pi, 100)
     u_inf = []
     for t in list(theta):
-        u_inf.append(far_field(k, u, t))
+        u_inf.append(far_field(k, u, t, inc=inc))
     u_inf = np.array(u_inf)
 
     fig, (ax1, ax2) = plt.subplots(1, 2, subplot_kw={'projection': 'polar'},
