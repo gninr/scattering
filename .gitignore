@@ -1,5 +1,8 @@
 *.msh
 *.pvd
 *.vtu
+firedrake-install
+firedrake-install.log
+firedrake/
 __pycache__/
 .ipynb_checkpoints/

@@ -5,82 +5,51 @@ import matplotlib.pyplot as plt
 
 def solve(mesh, k, a0, a1, b0, b1, g, neumann=False, quad_deg=None, beta=None):
     # Function space
-    W = fd.VectorFunctionSpace(mesh, "CG", 1)
-    if neumann:
-        p = fd.TrialFunction(W)
-    else:
-        p = fd.Function(W)
-    q = fd.TestFunction(W)
+    W = fd.FunctionSpace(mesh, "CG", 1)
+    p = fd.TrialFunction(W)
+    q = fd.conj(fd.TestFunction(W))
+    solution = fd.Function(W, name="sol")
 
     # Coefficient functions
     X = fd.SpatialCoordinate(mesh)
-    tol = 1e-10
     if beta is None:
         beta = 1
-    sigma_x = fd.conditional(abs(X[0]) > a0 - tol,
-                             beta / k / (a1 - abs(X[0])),
-                             0)
-    sigma_y = fd.conditional(abs(X[1]) > b0 - tol,
-                             beta / k / (b1 - abs(X[1])),
-                             0)
-    c1 = ((1 + sigma_x * sigma_y) / (1 + sigma_x**2),
-          (sigma_y - sigma_x) / (1 + sigma_x**2))
-    c2 = ((1 + sigma_x * sigma_y) / (1 + sigma_y**2),
-          (sigma_x - sigma_y) / (1 + sigma_y**2))
-    c3 = (1 - sigma_x * sigma_y, sigma_x + sigma_y)
+    sigma_x = beta / k / (a1 - abs(X[0]))
+    sigma_y = beta / k / (b1 - abs(X[1]))
+    gamma_x = 1 + 1j * sigma_x
+    gamma_y = 1 + 1j * sigma_y
 
     # Boundary data
     if neumann:
-        bcs = [fd.DirichletBC(W, (0., 0), 3)]
+        bcs = [fd.DirichletBC(W, 0., 3)]
     else:
         bcs = [fd.DirichletBC(W, g, 1),
-               fd.DirichletBC(W, (0., 0.), 3)]
+               fd.DirichletBC(W, 0., 3)]
 
     # Bilinear form
-    px, py = p.dx(0), p.dx(1)
-    qx, qy = q.dx(0), q.dx(1)
-    a = (prod2(px, qx) + prod2(py, qy) - k**2 * prod2(p, q)) * fd.dx(1) \
-        + (prod3(c1, px, qx) + prod3(c2, py, qy)
-            - k**2 * prod3(c3, p, q)) * fd.dx(2)
+    a = (fd.dot(fd.grad(p), fd.grad(q)) - k**2 * p * q) * fd.dx(1) \
+        + (1 / gamma_x * p.dx(0) * q.dx(0)
+            + gamma_x * p.dx(1) * q.dx(1)
+            - k**2 * gamma_x * p * q) * fd.dx(2) \
+        + (gamma_y * p.dx(0) * q.dx(0)
+            + 1 / gamma_y * p.dx(1) * q.dx(1)
+            - k**2 * gamma_y * p * q) * fd.dx(3) \
+        + (gamma_y / gamma_x * p.dx(0) * q.dx(0)
+            + gamma_x / gamma_y * p.dx(1) * q.dx(1)
+            - k**2 * gamma_x * gamma_y * p * q) * fd.dx(4)
 
     # Linear form
-    if neumann:
-        L = (prod2(g, q)) * fd.ds(1)
-        p = fd.Function(W)
-    else:
-        L = 0
+    L = g * q * fd.ds(1) if neumann else 0
 
     # Solution
     fcp = {}
     if quad_deg is not None:
         fcp["quadrature_degree"] = quad_deg
-    fd.solve(a == L, p, bcs=bcs, form_compiler_parameters=fcp)
-    return p
-
-
-def prod2(x, y, split=False):
-    x_re, x_im = x
-    y_re, y_im = y
-    res_re = x_re * y_re - x_im * y_im
-    res_im = x_re * y_im + x_im * y_re
-    if split:
-        return res_re, res_im
-    else:
-        return res_re + res_im
-
-
-def prod3(x, y, z, split=False):
-    x_re, x_im = x
-    y_re, y_im = y
-    z_re, z_im = z
-    res_re = x_re * y_re * z_re - x_re * y_im * z_im - x_im * y_re * z_im \
-        - x_im * y_im * z_re
-    res_im = x_re * y_re * z_im + x_re * y_im * z_re + x_im * y_re * z_re \
-        - x_im * y_im * z_im
-    if split:
-        return res_re, res_im
-    else:
-        return res_re + res_im
+    problem = fd.LinearVariationalProblem(
+        a, L, solution, bcs, form_compiler_parameters=fcp)
+    solver = fd.LinearVariationalSolver(problem)
+    solver.solve()
+    return solution
 
 
 def compute_error(u, uh, relative=True, norm="l2",
@@ -93,39 +62,29 @@ def compute_error(u, uh, relative=True, norm="l2",
     if norm == "l2":
         def form(h): return fd.inner(h, h)
     elif norm == "h1_semi":
-        def form(h):
-            return fd.inner(h.dx(0), h.dx(0)) + fd.inner(h.dx(1), h.dx(1))
+        def form(h): return fd.inner(fd.grad(h), fd.grad(h))
     elif norm == "h1":
-        def form(h):
-            return fd.inner(h, h) \
-                + fd.inner(h.dx(0), h.dx(0)) + fd.inner(h.dx(1), h.dx(1))
+        def form(h): return fd.inner(h, h) + fd.inner(fd.grad(h), fd.grad(h))
 
     err = fd.assemble(form(u - uh) * fd.dx(1),
                       form_compiler_parameters=fcp)**0.5
     if relative:
         err /= fd.assemble(form(u) * fd.dx(1),
                            form_compiler_parameters=fcp)**0.5
-    return err
+    return err.real
 
 
-def far_field(k, u, theta, inc=None):
-    mesh = u.function_space().mesh()
+def far_field(k, u_s, theta, inc=0):
+    mesh = u_s.function_space().mesh()
     n = fd.FacetNormal(mesh)
     y = fd.SpatialCoordinate(mesh)
 
-    x = fd.Constant((np.cos(theta), np.sin(theta)))
-    phi = fd.pi / 4 - k * fd.inner(x, y)
-    f = (fd.cos(phi), fd.sin(phi))
-    if inc is None:
-        g = (fd.inner(k * u[1] * x - fd.grad(u[0]), -n),
-             fd.inner(-k * u[0] * x - fd.grad(u[1]), -n))
-    else:
-        g = (fd.inner(k * (u[1] + inc[1]) * x - fd.grad(u[0] + inc[0]), -n),
-             fd.inner(-k * (u[0] + inc[0]) * x - fd.grad(u[1] + inc[1]), -n))
-    h = prod2(f, g, split=True)
-    res_re = 1 / np.sqrt(8*np.pi*k) * fd.assemble(h[0] * fd.ds(1))
-    res_im = 1 / np.sqrt(8*np.pi*k) * fd.assemble(h[1] * fd.ds(1))
-    return res_re, res_im
+    x = fd.as_vector([np.cos(theta), np.sin(theta)])
+    u = u_s + inc
+    res = np.exp(1j*np.pi/4) / np.sqrt(8*np.pi*k) * fd.assemble(
+        fd.exp(-1j * k * fd.dot(x, y))
+        * fd.dot(-1j * k * u * x - fd.grad(u), -n) * fd.ds(1))
+    return res
 
 
 def plot_mesh(m):
@@ -139,7 +98,7 @@ def plot_mesh(m):
 def plot_field(u, a0, a1, b0, b1):
     fig, (ax1, ax2) = plt.subplots(1, 2, constrained_layout=True)
 
-    plot1 = fd.tripcolor(u.sub(0), axes=ax1)
+    plot1 = fd.tripcolor(u, complex_component="real", axes=ax1)
     ax1.set_aspect("equal")
     ax1.set_title("Real part")
     ax1.set_xlim(-a1, a1)
@@ -148,7 +107,7 @@ def plot_field(u, a0, a1, b0, b1):
         plt.Rectangle((-a0, -b0), 2*a0, 2*b0, color='w', fill=False))
     fig.colorbar(plot1, shrink=0.5, ax=ax1)
 
-    plot2 = fd.tripcolor(u.sub(1), axes=ax2)
+    plot2 = fd.tripcolor(u, complex_component="imag", axes=ax2)
     ax2.set_aspect("equal")
     ax2.set_title("Imaginary part")
     ax2.set_xlim(-a1, a1)
@@ -158,7 +117,7 @@ def plot_field(u, a0, a1, b0, b1):
     fig.colorbar(plot2, shrink=0.5, ax=ax2)
 
 
-def plot_far_field(k, u, inc=None):
+def plot_far_field(k, u, inc=0):
     theta = np.linspace(0, 2 * np.pi, 100)
     u_inf = []
     for t in list(theta):
@@ -167,11 +126,11 @@ def plot_far_field(k, u, inc=None):
 
     fig, (ax1, ax2) = plt.subplots(1, 2, subplot_kw={'projection': 'polar'},
                                    constrained_layout=True)
-    ax1.plot(theta, u_inf[:, 0])
+    ax1.plot(theta, u_inf.real)
     ax1.set_title("Real part")
     ax1.set_rlabel_position(90)
     ax1.grid(True)
-    ax2.plot(theta, u_inf[:, 1])
+    ax2.plot(theta, u_inf.imag)
     ax2.set_title("Imaginary part")
     ax2.set_rlabel_position(90)
     ax2.grid(True)
