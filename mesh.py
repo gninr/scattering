@@ -3,7 +3,7 @@ import numpy as np
 import firedrake as fd
 
 
-def generate_mesh(a0, a1, b0, b1, shape, h0, level=0):
+def generate_mesh(a0, a1, b0, b1, shape, h0, level=0, R0=None, R1=None):
     gmsh.initialize()
 
     # Absorbing layer
@@ -78,26 +78,33 @@ def generate_mesh(a0, a1, b0, b1, shape, h0, level=0):
         print("Unsupported shape.")
         raise NotImplementedError
 
-    gmsh.model.occ.addCurveLoop(range(kc_start, kc_end), 1)
-    gmsh.model.occ.addCurveLoop(range(1, 5), 2)
-    gmsh.model.occ.addCurveLoop([5, -9, -1, -24], 3)
-    gmsh.model.occ.addCurveLoop([-12, 6, -13, -2], 4)
-    gmsh.model.occ.addCurveLoop([-3, -16, 7, -17], 5)
-    gmsh.model.occ.addCurveLoop([-21, -4, -20, 8], 6)
-    gmsh.model.occ.addCurveLoop(range(9, 13), 7)
-    gmsh.model.occ.addCurveLoop(range(13, 17), 8)
-    gmsh.model.occ.addCurveLoop(range(17, 21), 9)
-    gmsh.model.occ.addCurveLoop(range(21, 25), 10)
+    gmsh.model.occ.addCurveLoop(range(1, 5), 1)
+    gmsh.model.occ.addCurveLoop([5, -9, -1, -24], 2)
+    gmsh.model.occ.addCurveLoop([-12, 6, -13, -2], 3)
+    gmsh.model.occ.addCurveLoop([-3, -16, 7, -17], 4)
+    gmsh.model.occ.addCurveLoop([-21, -4, -20, 8], 5)
+    gmsh.model.occ.addCurveLoop(range(9, 13), 6)
+    gmsh.model.occ.addCurveLoop(range(13, 17), 7)
+    gmsh.model.occ.addCurveLoop(range(17, 21), 8)
+    gmsh.model.occ.addCurveLoop(range(21, 25), 9)
+    gmsh.model.occ.addCurveLoop(range(kc_start, kc_end), 10)
 
-    gmsh.model.occ.addPlaneSurface([1, 2], 1)
-    gmsh.model.occ.addPlaneSurface([3], 2)
-    gmsh.model.occ.addPlaneSurface([4], 3)
-    gmsh.model.occ.addPlaneSurface([5], 4)
-    gmsh.model.occ.addPlaneSurface([6], 5)
-    gmsh.model.occ.addPlaneSurface([7], 6)
-    gmsh.model.occ.addPlaneSurface([8], 7)
-    gmsh.model.occ.addPlaneSurface([9], 8)
-    gmsh.model.occ.addPlaneSurface([10], 9)
+    for cl in range(1, 9):
+        gmsh.model.occ.addPlaneSurface([cl + 1], cl)
+
+    if R0 is None:
+        gmsh.model.occ.addPlaneSurface([1, 10], 9)
+    else:
+        circ0 = gmsh.model.occ.addCircle(0, 0, 0, R0)
+        cl0 = gmsh.model.occ.addCurveLoop([circ0])
+        gmsh.model.occ.addPlaneSurface([10, cl0], 9)
+        if R1 is None:
+            gmsh.model.occ.addPlaneSurface([cl0, 1], 10)
+        else:
+            circ1 = gmsh.model.occ.addCircle(0, 0, 0, R1)
+            cl1 = gmsh.model.occ.addCurveLoop([circ1])
+            gmsh.model.occ.addPlaneSurface([cl0, cl1], 10)
+            gmsh.model.occ.addPlaneSurface([cl1, 1], 11)
 
     gmsh.model.occ.synchronize()
 
@@ -106,11 +113,22 @@ def generate_mesh(a0, a1, b0, b1, shape, h0, level=0):
     gmsh.model.addPhysicalGroup(
         1, list(range(5, 9)) + [10, 11, 14, 15, 18, 19, 22, 23], 3,
         name="Gamma_D")
+    if R0 is not None:
+        gmsh.model.addPhysicalGroup(1, [circ0], 4, name="R0")
+    if R1 is not None:
+        gmsh.model.addPhysicalGroup(1, [circ1], 5, name="R1")
 
-    gmsh.model.addPhysicalGroup(2, [1], 1, name="Omega_F")
-    gmsh.model.addPhysicalGroup(2, [2, 4], 2, name="Omega_A_x")
-    gmsh.model.addPhysicalGroup(2, [3, 5], 3, name="Omega_A_y")
-    gmsh.model.addPhysicalGroup(2, range(6, 10), 4, name="Omega_A_xy")
+    if R0 is None:
+        gmsh.model.addPhysicalGroup(2, [9], 1, name="Omega_F")
+    elif R1 is None:
+        gmsh.model.addPhysicalGroup(2, [9, 10], 1, name="Omega_F")
+    else:
+        gmsh.model.addPhysicalGroup(2, [9, 11], 1, name="Omega_F")
+        gmsh.model.addPhysicalGroup(2, [10], 5, name="Omega_inf")
+
+    gmsh.model.addPhysicalGroup(2, [1, 3], 2, name="Omega_A_x")
+    gmsh.model.addPhysicalGroup(2, [2, 4], 3, name="Omega_A_y")
+    gmsh.model.addPhysicalGroup(2, range(5, 9), 4, name="Omega_A_xy")
 
     gmsh.option.setNumber("Mesh.MeshSizeFactor", h0 / 2**level)
     gmsh.model.mesh.generate(2)

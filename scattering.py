@@ -3,7 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-def solve(mesh, k, a0, a1, b0, b1, g, neumann=False, quad_deg=None, beta=None):
+def solve(mesh, k, a0, a1, b0, b1, g, neumann=False,
+          quad_deg=None, beta=None, annular=False):
     # Function space
     W = fd.FunctionSpace(mesh, "CG", 1)
     p = fd.TrialFunction(W)
@@ -27,7 +28,11 @@ def solve(mesh, k, a0, a1, b0, b1, g, neumann=False, quad_deg=None, beta=None):
                fd.DirichletBC(W, 0., 3)]
 
     # Bilinear form
-    a = (fd.dot(fd.grad(p), fd.grad(q)) - k**2 * p * q) * fd.dx(1) \
+    if annular:
+        Omega_F = fd.dx(1) + fd.dx(5)
+    else:
+        Omega_F = fd.dx(1)
+    a = (fd.dot(fd.grad(p), fd.grad(q)) - k**2 * p * q) * Omega_F \
         + (1 / gamma_x * p.dx(0) * q.dx(0)
             + gamma_x * p.dx(1) * q.dx(1)
             - k**2 * gamma_x * p * q) * fd.dx(2) \
@@ -74,16 +79,38 @@ def compute_error(u, uh, relative=True, norm="l2",
     return err.real
 
 
-def far_field(k, u_s, theta, inc=0):
+def far_field(k, u_s, theta, inc=0, boundary=1):
     mesh = u_s.function_space().mesh()
     n = fd.FacetNormal(mesh)
     y = fd.SpatialCoordinate(mesh)
 
     x = fd.as_vector([np.cos(theta), np.sin(theta)])
     u = u_s + inc
+    if boundary == 1:
+        res = np.exp(1j*np.pi/4) / np.sqrt(8*np.pi*k) * fd.assemble(
+            fd.dot(-1j * k * u * x - fd.grad(u), -n)
+            * fd.exp(-1j * k * fd.dot(x, y)) * fd.ds(1))
+    else:
+        res = np.exp(1j*np.pi/4) / np.sqrt(8*np.pi*k) * fd.assemble(
+            # fd.dot(-1j * k * u * x - fd.grad(u)('+'), n('+'))
+            fd.dot(-1j * k * u * x - fd.avg(fd.grad(u)), n('+'))
+            * fd.exp(-1j * k * fd.dot(x, y)) * fd.dS(boundary))
+    return res
+
+
+def far_field_vol(k, u_s, theta, R0, R1, inc=0):
+    mesh = u_s.function_space().mesh()
+    x = fd.as_vector([np.cos(theta), np.sin(theta)])
+    y = fd.SpatialCoordinate(mesh)
+    r = fd.real(fd.sqrt(fd.inner(y, y)))
+    psi = (1 - fd.cos((r - R0) / (R1 - R0) * fd.pi)) / 2
+    u = u_s + inc
+
+    fcp = {"quadrature_degree": 4}
     res = np.exp(1j*np.pi/4) / np.sqrt(8*np.pi*k) * fd.assemble(
-        fd.exp(-1j * k * fd.dot(x, y))
-        * fd.dot(-1j * k * u * x - fd.grad(u), -n) * fd.ds(1))
+        u * (fd.div(fd.grad(psi)) - 2j * k * fd.dot(x, fd.grad(psi)))
+        * fd.exp(-1j * k * fd.dot(x, y)) * fd.dx(5),
+        form_compiler_parameters=fcp)
     return res
 
 
@@ -117,11 +144,11 @@ def plot_field(u, a0, a1, b0, b1):
     fig.colorbar(plot2, shrink=0.5, ax=ax2)
 
 
-def plot_far_field(k, u, inc=0):
+def plot_far_field(k, u, inc=0, boundary=1):
     theta = np.linspace(0, 2 * np.pi, 100)
     u_inf = []
     for t in list(theta):
-        u_inf.append(far_field(k, u, t, inc=inc))
+        u_inf.append(far_field(k, u, t, inc=inc, boundary=boundary))
     u_inf = np.array(u_inf)
 
     fig, (ax1, ax2) = plt.subplots(1, 2, subplot_kw={'projection': 'polar'},
@@ -134,3 +161,24 @@ def plot_far_field(k, u, inc=0):
     ax2.set_title("Imaginary part")
     ax2.set_rlabel_position(90)
     ax2.grid(True)
+    fig.suptitle("Boundary-based formula")
+
+
+def plot_far_field_vol(k, u, R0, R1, inc=0):
+    theta = np.linspace(0, 2 * np.pi, 100)
+    u_inf = []
+    for t in list(theta):
+        u_inf.append(far_field_vol(k, u, t, R0, R1, inc=inc))
+    u_inf = np.array(u_inf)
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, subplot_kw={'projection': 'polar'},
+                                   constrained_layout=True)
+    ax1.plot(theta, u_inf.real)
+    ax1.set_title("Real part")
+    ax1.set_rlabel_position(90)
+    ax1.grid(True)
+    ax2.plot(theta, u_inf.imag)
+    ax2.set_title("Imaginary part")
+    ax2.set_rlabel_position(90)
+    ax2.grid(True)
+    fig.suptitle("Volume-based formula")
