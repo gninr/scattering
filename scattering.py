@@ -81,10 +81,9 @@ def compute_error(u, uh, relative=True, norm="l2",
 
 def far_field(k, u_s, theta, inc=0, boundary=1):
     mesh = u_s.function_space().mesh()
-    n = fd.FacetNormal(mesh)
+    x = fd.Constant((np.cos(theta), np.sin(theta)))
     y = fd.SpatialCoordinate(mesh)
-
-    x = fd.as_vector([np.cos(theta), np.sin(theta)])
+    n = fd.FacetNormal(mesh)
     u = u_s + inc
     if boundary == 1:
         res = np.exp(1j*np.pi/4) / np.sqrt(8*np.pi*k) * fd.assemble(
@@ -92,7 +91,6 @@ def far_field(k, u_s, theta, inc=0, boundary=1):
             * fd.exp(-1j * k * fd.dot(x, y)) * fd.ds(1))
     else:
         res = np.exp(1j*np.pi/4) / np.sqrt(8*np.pi*k) * fd.assemble(
-            # fd.dot(-1j * k * u * x - fd.grad(u)('+'), n('+'))
             fd.dot(-1j * k * u * x - fd.avg(fd.grad(u)), n('+'))
             * fd.exp(-1j * k * fd.dot(x, y)) * fd.dS(boundary))
     return res
@@ -100,7 +98,7 @@ def far_field(k, u_s, theta, inc=0, boundary=1):
 
 def far_field_vol(k, u_s, theta, R0, R1, inc=0):
     mesh = u_s.function_space().mesh()
-    x = fd.as_vector([np.cos(theta), np.sin(theta)])
+    x = fd.Constant((np.cos(theta), np.sin(theta)))
     y = fd.SpatialCoordinate(mesh)
     r = fd.real(fd.sqrt(fd.inner(y, y)))
     psi = (1 - fd.cos((r - R0) / (R1 - R0) * fd.pi)) / 2
