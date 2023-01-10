@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 
 
 def solve(mesh, k, a0, a1, b0, b1, g, neumann=False,
-          quad_deg=None, beta=None, annular=False):
+          quad_deg=None, beta=1, annular=False):
     # Function space
     W = fd.VectorFunctionSpace(mesh, "CG", 1)
     p = fd.TrialFunction(W)
@@ -12,9 +12,9 @@ def solve(mesh, k, a0, a1, b0, b1, g, neumann=False,
     solution = fd.Function(W, name="sol")
 
     # Coefficient functions
+    k = fd.Constant(k)
+    beta = fd.Constant(beta)
     X = fd.SpatialCoordinate(mesh)
-    if beta is None:
-        beta = 1
     sigma_x = beta / k / (a1 - abs(X[0]))
     sigma_y = beta / k / (b1 - abs(X[1]))
     c1x = (1 / (1 + sigma_x**2), -sigma_x / (1 + sigma_x**2))
@@ -113,47 +113,43 @@ def compute_error(u, uh, relative=True, norm="l2",
     return err
 
 
-def far_field(k, u_s, theta, inc=None, boundary=1):
+def far_field(k, u_s, x, boundary=1):
     mesh = u_s.function_space().mesh()
-    x = fd.Constant((np.cos(theta), np.sin(theta)))
     y = fd.SpatialCoordinate(mesh)
     n = fd.FacetNormal(mesh)
-    u = u_s + inc if inc else u_s
 
-    phi = fd.pi / 4 - k * fd.inner(x, y)
+    phi = fd.pi / 4 - fd.Constant(k) * fd.inner(x, y)
     f = (fd.cos(phi), fd.sin(phi))
     if boundary == 1:
-        g = (fd.inner(k * u[1] * x - fd.grad(u[0]), -n),
-             fd.inner(-k * u[0] * x - fd.grad(u[1]), -n))
+        g = (fd.inner(k * u_s[1] * x - fd.grad(u_s[0]), -n),
+             fd.inner(-k * u_s[0] * x - fd.grad(u_s[1]), -n))
         h = dot(f, g)
         res_re = 1 / np.sqrt(8*np.pi*k) * fd.assemble(h[0] * fd.ds(1))
         res_im = 1 / np.sqrt(8*np.pi*k) * fd.assemble(h[1] * fd.ds(1))
     else:
-        g = (fd.inner(k * u[1] * x - fd.avg(fd.grad(u[0])), n('+')),
-             fd.inner(-k * u[0] * x - fd.avg(fd.grad(u[1])), n('+')))
+        g = (fd.inner(k * u_s[1] * x - fd.avg(fd.grad(u_s[0])), n('+')),
+             fd.inner(-k * u_s[0] * x - fd.avg(fd.grad(u_s[1])), n('+')))
         h = dot(f, g)
         res_re = 1 / np.sqrt(8*np.pi*k) * fd.assemble(h[0] * fd.dS(boundary))
         res_im = 1 / np.sqrt(8*np.pi*k) * fd.assemble(h[1] * fd.dS(boundary))
     return res_re, res_im
 
 
-def far_field_vol(k, u_s, theta, R0, R1, inc=None):
+def far_field_vol(k, u_s, x, R0, R1):
     mesh = u_s.function_space().mesh()
-    x = fd.Constant((np.cos(theta), np.sin(theta)))
     y = fd.SpatialCoordinate(mesh)
     r = fd.sqrt(fd.dot(y, y))
     psi = (1 - fd.cos((r - R0) / (R1 - R0) * fd.pi)) / 2
-    u = u_s + inc if inc else u_s
 
-    fcp = {"quadrature_degree": 4}
-    phi = fd.pi / 4 - k * fd.inner(x, y)
+    phi = fd.pi / 4 - fd.Constant(k) * fd.inner(x, y)
     f = (fd.cos(phi), fd.sin(phi))
-    g = dot(u, (fd.div(fd.grad(psi)), -2 * k * fd.dot(x, fd.grad(psi))))
+    grad_psi = fd.interpolate(fd.grad(psi), u_s.function_space())
+    V = fd.FunctionSpace(mesh, "CG", 1)
+    laplace_psi = fd.interpolate(fd.div(fd.grad(psi)), V)
+    g = dot(u_s, (laplace_psi, -2 * k * fd.dot(x, grad_psi)))
     h = dot(f, g)
-    res_re = 1 / np.sqrt(8*np.pi*k) *\
-        fd.assemble(h[0] * fd.dx(5), form_compiler_parameters=fcp)
-    res_im = 1 / np.sqrt(8*np.pi*k) *\
-        fd.assemble(h[1] * fd.dx(5), form_compiler_parameters=fcp)
+    res_re = 1 / np.sqrt(8*np.pi*k) * fd.assemble(h[0] * fd.dx(5))
+    res_im = 1 / np.sqrt(8*np.pi*k) * fd.assemble(h[1] * fd.dx(5))
     return res_re, res_im
 
 
@@ -187,11 +183,12 @@ def plot_field(u, a0, a1, b0, b1):
     fig.colorbar(plot2, shrink=0.5, ax=ax2)
 
 
-def plot_far_field(k, u, inc=None, boundary=1):
+def plot_far_field(k, u, boundary=1):
     theta = np.linspace(0, 2 * np.pi, 100)
     u_inf = []
     for t in list(theta):
-        u_inf.append(far_field(k, u, t, inc=inc, boundary=boundary))
+        x = fd.Constant((np.cos(t), np.sin(t)))
+        u_inf.append(far_field(k, u, x, boundary=boundary))
     u_inf = np.array(u_inf)
 
     fig, (ax1, ax2) = plt.subplots(1, 2, subplot_kw={'projection': 'polar'},
@@ -207,11 +204,12 @@ def plot_far_field(k, u, inc=None, boundary=1):
     fig.suptitle("Boundary-based formula")
 
 
-def plot_far_field_vol(k, u, R0, R1, inc=None):
+def plot_far_field_vol(k, u, R0, R1):
     theta = np.linspace(0, 2 * np.pi, 100)
     u_inf = []
     for t in list(theta):
-        u_inf.append(far_field_vol(k, u, t, R0, R1, inc=inc))
+        x = fd.Constant((np.cos(t), np.sin(t)))
+        u_inf.append(far_field_vol(k, u, x, R0, R1))
     u_inf = np.array(u_inf)
 
     fig, (ax1, ax2) = plt.subplots(1, 2, subplot_kw={'projection': 'polar'},

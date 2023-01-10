@@ -53,12 +53,11 @@ def generate_mesh(a0, a1, b0, b1, shape, h0, level=0, R0=None, R1=None):
 
     # Obstacle
     if shape == "sphere":
-        gmsh.model.occ.addCircle(0, 0, 0, 1, kc_start)
+        gmsh.model.occ.addCircle(0.1, 0.1, 0, 1, kc_start)
         kc_end = kc_start + 1
 
     elif shape == "kite":
         ts = np.linspace(0, 2 * np.pi, 100 * 2**level, endpoint=False)
-        kp_start = 17
         kp = kp_start
         for t in ts:
             x = np.cos(t) + 0.65 * np.cos(2 * t) - 0.65
@@ -72,6 +71,19 @@ def generate_mesh(a0, a1, b0, b1, shape, h0, level=0, R0=None, R1=None):
             gmsh.model.occ.addLine(kp, kp + 1, kc)
             kc += 1
         gmsh.model.occ.addLine(kp_end - 1, kp_start, kc)
+        kc_end = kc + 1
+
+    elif shape == "square":
+        gmsh.model.occ.addPoint(1, -1, 0, 1, kp_start)
+        gmsh.model.occ.addPoint(1, 1, 0, 1, kp_start + 1)
+        gmsh.model.occ.addPoint(-1, 1, 0, 1, kp_start + 2)
+        gmsh.model.occ.addPoint(-1, -1, 0, 1, kp_start + 3)
+
+        kc = kc_start
+        for kp in range(kp_start, kp_start + 3):
+            gmsh.model.occ.addLine(kp, kp + 1, kc)
+            kc += 1
+        gmsh.model.occ.addLine(kp_start + 3, kp_start, kc)
         kc_end = kc + 1
 
     else:
