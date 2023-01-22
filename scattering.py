@@ -184,12 +184,14 @@ def plot_field(u, a0, a1, b0, b1):
 
 
 def plot_far_field(k, u, boundary=1):
-    theta = np.linspace(0, 2 * np.pi, 100)
+    n = 100
+    theta = 2 * np.pi / n * np.arange(n)
     u_inf = []
     for t in list(theta):
         x = fd.Constant((np.cos(t), np.sin(t)))
         u_inf.append(far_field(k, u, x, boundary=boundary))
-    u_inf = np.array(u_inf)
+    theta = np.append(theta, 0)
+    u_inf = np.array(u_inf + [u_inf[0]])
 
     fig, (ax1, ax2) = plt.subplots(1, 2, subplot_kw={'projection': 'polar'},
                                    constrained_layout=True)
@@ -205,12 +207,14 @@ def plot_far_field(k, u, boundary=1):
 
 
 def plot_far_field_vol(k, u, R0, R1):
-    theta = np.linspace(0, 2 * np.pi, 100)
+    n = 100
+    theta = 2 * np.pi / n * np.arange(n)
     u_inf = []
-    for t in list(theta):
+    for t in theta:
         x = fd.Constant((np.cos(t), np.sin(t)))
         u_inf.append(far_field_vol(k, u, x, R0, R1))
-    u_inf = np.array(u_inf)
+    theta = np.append(theta, 0)
+    u_inf = np.array(u_inf + [u_inf[0]])
 
     fig, (ax1, ax2) = plt.subplots(1, 2, subplot_kw={'projection': 'polar'},
                                    constrained_layout=True)

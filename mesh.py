@@ -4,8 +4,10 @@ import numpy as np
 import firedrake as fd
 
 
-def generate_mesh(a0, a1, b0, b1, shape, N, level=0, R0=None, R1=None):
+def generate_mesh(a0, a1, b0, b1, shape, N, level=0, R0=None, R1=None,
+                  shift=(0, 0), suffix=""):
     h0 = min(a1 - a0, b1 - b0) / N
+    x0, y0 = shift
 
     gmsh.initialize()
 
@@ -57,12 +59,11 @@ def generate_mesh(a0, a1, b0, b1, shape, N, level=0, R0=None, R1=None):
     # Obstacle
     if shape == "sphere":
         r = 1.
-        x, y = (0.1, 0.1)
-        p0 = gmsh.model.geo.addPoint(x, y, 0, 1)
-        p1 = gmsh.model.geo.addPoint(x + r, y, 0, 1)
-        p2 = gmsh.model.geo.addPoint(x, y + r, 0, 1)
-        p3 = gmsh.model.geo.addPoint(x - r, y, 0, 1)
-        p4 = gmsh.model.geo.addPoint(x, y - r, 0, 1)
+        p0 = gmsh.model.geo.addPoint(x0, y0, 0, 1)
+        p1 = gmsh.model.geo.addPoint(x0 + r, y0, 0, 1)
+        p2 = gmsh.model.geo.addPoint(x0, y0 + r, 0, 1)
+        p3 = gmsh.model.geo.addPoint(x0 - r, y0, 0, 1)
+        p4 = gmsh.model.geo.addPoint(x0, y0 - r, 0, 1)
         gmsh.model.geo.addCircleArc(p1, p0, p2, c_start)
         gmsh.model.geo.addCircleArc(p2, p0, p3, c_start + 1)
         gmsh.model.geo.addCircleArc(p3, p0, p4, c_start + 2)
@@ -73,8 +74,8 @@ def generate_mesh(a0, a1, b0, b1, shape, N, level=0, R0=None, R1=None):
         ts = np.linspace(0, 2 * np.pi, 100 * 2**level, endpoint=False)
         p = p_start
         for t in ts:
-            x = np.cos(t) + 0.65 * np.cos(2 * t) - 0.65
-            y = 1.5 * np.sin(t)
+            x = x0 + np.cos(t) + 0.65 * np.cos(2 * t) - 0.65
+            y = y0 + 1.5 * np.sin(t)
             gmsh.model.geo.addPoint(x, y, 0, 1, p)
             p += 1
         p_end = p
@@ -87,10 +88,10 @@ def generate_mesh(a0, a1, b0, b1, shape, N, level=0, R0=None, R1=None):
         c_end = c + 1
 
     elif shape == "square":
-        gmsh.model.geo.addPoint(1, -1, 0, 1, p_start)
-        gmsh.model.geo.addPoint(1, 1, 0, 1, p_start + 1)
-        gmsh.model.geo.addPoint(-1, 1, 0, 1, p_start + 2)
-        gmsh.model.geo.addPoint(-1, -1, 0, 1, p_start + 3)
+        gmsh.model.geo.addPoint(x0+1, y0-1, 0, 1, p_start)
+        gmsh.model.geo.addPoint(x0+1, y0+1, 0, 1, p_start + 1)
+        gmsh.model.geo.addPoint(x0-1, y0+1, 0, 1, p_start + 2)
+        gmsh.model.geo.addPoint(x0-1, y0-1, 0, 1, p_start + 3)
 
         c = c_start
         for p in range(p_start, p_start + 3):
@@ -185,7 +186,7 @@ def generate_mesh(a0, a1, b0, b1, shape, N, level=0, R0=None, R1=None):
     for _ in range(level):
         gmsh.model.mesh.refine()
 
-    msh_file = shape + str(level) + ".msh"
+    msh_file = shape + str(level) + suffix + ".msh"
     gmsh.write(msh_file)
 
     gmsh.finalize()
