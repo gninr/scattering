@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 
 def solve(mesh, k, a0, a1, b0, b1, g, neumann=False,
           quad_deg=None, beta=1, annular=False):
+    """Solve acoustic scattering problem using PML method."""
     # Function space
     W = fd.VectorFunctionSpace(mesh, "CG", 1)
     p = fd.TrialFunction(W)
@@ -66,6 +67,7 @@ def solve(mesh, k, a0, a1, b0, b1, g, neumann=False,
 
 
 def inner(x, y, c=None):
+    """Evaluate sesquilinear form (x, y) = c*x*conj(y)."""
     x_re, x_im = x
     y_re, y_im = y
     if c:
@@ -81,6 +83,7 @@ def inner(x, y, c=None):
 
 
 def dot(x, y):
+    """Evaluate product of two complex numbers."""
     x_re, x_im = x
     y_re, y_im = y
     res_re = x_re * y_re - x_im * y_im
@@ -90,6 +93,7 @@ def dot(x, y):
 
 def compute_error(u, uh, relative=True, norm="l2",
                   quad_rule=None, quad_deg=None):
+    """Compute error between u and uh."""
     fcp = {}
     if quad_rule is not None:
         fcp["quadrature_rule"] = quad_rule
@@ -114,6 +118,7 @@ def compute_error(u, uh, relative=True, norm="l2",
 
 
 def far_field(k, u_s, x, boundary=1):
+    """Evaluate far field pattern using boundary-based formula."""
     mesh = u_s.function_space().mesh()
     y = fd.SpatialCoordinate(mesh)
     n = fd.FacetNormal(mesh)
@@ -136,6 +141,7 @@ def far_field(k, u_s, x, boundary=1):
 
 
 def far_field_vol(k, u_s, x, R0, R1):
+    """Evaluate far field pattern using volume-based formula."""
     mesh = u_s.function_space().mesh()
     y = fd.SpatialCoordinate(mesh)
     r = fd.sqrt(fd.dot(y, y))

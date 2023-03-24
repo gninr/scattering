@@ -57,7 +57,7 @@ def generate_mesh(a0, a1, b0, b1, shape, N, level=0, R0=None, R1=None,
     c_start = 25
 
     # Obstacle
-    if shape == "sphere":
+    if shape == "circle":
         r = 1.
         p0 = gmsh.model.geo.addPoint(x0, y0, 0, 1)
         p1 = gmsh.model.geo.addPoint(x0 + r, y0, 0, 1)
